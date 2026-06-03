@@ -1,5 +1,5 @@
 pipeline {
-    agent none
+    agent none // Individual agents remain specified per stage
 
     environment {
         ARTIFACT_DIR  = 'dist'
@@ -14,6 +14,9 @@ pipeline {
                 docker { 
                     image 'node:20-alpine' 
                     reuseNode true
+                    // FIX 1: Set npm cache directory to a local writable workspace path 
+                    // instead of let npm default to a locked root directory (/.npm)
+                    args '-e npm_config_cache=/tmp/.npm'
                 }
             }
             steps {
@@ -30,14 +33,13 @@ pipeline {
             steps {
                 echo 'Running SonarQube Analysis...'
                 withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
-                    // Running the scanner scanner container targeting our host container
                     sh '''
                         docker run --rm \
                             -v "${WORKSPACE}:/usr/src" \
                             -v "sonar_cache:/opt/sonar-scanner/.sonar/cache" \
                             sonarsource/sonar-scanner-cli:latest \
                             -Dsonar.projectKey=fast-api-electron-js \
-                            -Dsonar.projectName=\"FastAPI Electron Windows App\" \
+                            -Dsonar.projectName="FastAPI Electron Windows App" \
                             -Dsonar.sources=. \
                             -Dsonar.host.url=${SONAR_URL} \
                             -Dsonar.token=${SONAR_TOKEN}
@@ -83,10 +85,14 @@ pipeline {
         }
     }
 
+    // FIX 2: Wrapped post conditions in an explicit node context 
+    // so Jenkins knows exactly which executor workspace to clean up.
     post {
         always {
-            echo 'Cleaning up workspace execution contexts.'
-            cleanWs()
+            node {
+                echo 'Cleaning up workspace execution contexts.'
+                cleanWs()
+            }
         }
     }
 }
