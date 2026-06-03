@@ -3,7 +3,6 @@ pipeline {
         docker {
             image 'electronuserland/builder:wine-chrome'
             reuseNode true
-            // Strip structural entrypoint configurations
             args '--entrypoint=""'
         }
     }
@@ -12,20 +11,21 @@ pipeline {
         ARTIFACT_DIR  = 'dist'
         PYTHON_DIST   = 'backend/dist'
         WINEDEBUG     = '-all'
-        // FIX 1: Force Wine to write its virtual C:\\ drive into our writable workspace
         WINEPREFIX    = "${WORKSPACE}/.wine"
+        // FIX 1: Explicitly force Wine to use a 64-bit architecture workspace mapping
+        WINEARCH      = 'amd64'
     }
 
     stages {
         stage('Build Windows Binary (Python)') {
             steps {
                 echo 'Compiling Python FastAPI Backend to Windows EXE...'
-                // FIX 2: Initialize a headless virtual frame buffer wrapper (xvfb-run) 
-                // so Wine can execute without XDG graphical environmental setups
+                // FIX 2: Target wine64 and use python execution routes to run pip cleanly
                 sh '''
                     mkdir -p ${WINEPREFIX}
-                    xvfb-run --server-args="-screen 0 1024x768x24" wine pip install -r backend/requirements.txt
-                    xvfb-run --server-args="-screen 0 1024x768x24" wine pyinstaller --onefile --windowed --name=api backend/src/api.py --distpath ./${PYTHON_DIST}
+                    xvfb-run --server-args="-screen 0 1024x768x24" wine64 python -m pip install --upgrade pip
+                    xvfb-run --server-args="-screen 0 1024x768x24" wine64 python -m pip install -r backend/requirements.txt
+                    xvfb-run --server-args="-screen 0 1024x768x24" wine64 pyinstaller --onefile --windowed --name=api backend/src/api.py --distpath ./${PYTHON_DIST}
                 '''
 
                 echo 'Placing Python Binary into Electron Assets...'
