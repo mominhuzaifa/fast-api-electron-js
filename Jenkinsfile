@@ -12,15 +12,16 @@ pipeline {
         PYTHON_DIST   = 'backend/dist'
         WINEDEBUG     = '-all'
         WINEPREFIX    = "${WORKSPACE}/.wine"
-        // FIX 1: Explicitly force Wine to use a 64-bit architecture workspace mapping
-        WINEARCH      = 'amd64'
+        // FIX 1: Use the precise value 'win64' expected by Wine
+        WINEARCH      = 'win64'
+        // FIX 2: Disable interactive GUI popups for missing engines in headless build
+        WINEDLLOVERRIDES = "mscoree,mshtml="
     }
 
     stages {
         stage('Build Windows Binary (Python)') {
             steps {
                 echo 'Compiling Python FastAPI Backend to Windows EXE...'
-                // FIX 2: Target wine64 and use python execution routes to run pip cleanly
                 sh '''
                     mkdir -p ${WINEPREFIX}
                     xvfb-run --server-args="-screen 0 1024x768x24" wine64 python -m pip install --upgrade pip
@@ -63,3 +64,4 @@ pipeline {
         }
     }
 }
+
