@@ -3,8 +3,8 @@ pipeline {
         docker {
             image 'electronuserland/builder:wine-chrome'
             reuseNode true
-            // Forces an interactive TTY and allocations that prevent shell spawn timing out
-            args '-v /var/run/docker.sock:/var/run/docker.sock --entrypoint=""'
+            // Strip structural entrypoint configurations
+            args '--entrypoint=""'
         }
     }
 
@@ -12,15 +12,20 @@ pipeline {
         ARTIFACT_DIR  = 'dist'
         PYTHON_DIST   = 'backend/dist'
         WINEDEBUG     = '-all'
+        // FIX 1: Force Wine to write its virtual C:\\ drive into our writable workspace
+        WINEPREFIX    = "${WORKSPACE}/.wine"
     }
 
     stages {
         stage('Build Windows Binary (Python)') {
             steps {
                 echo 'Compiling Python FastAPI Backend to Windows EXE...'
+                // FIX 2: Initialize a headless virtual frame buffer wrapper (xvfb-run) 
+                // so Wine can execute without XDG graphical environmental setups
                 sh '''
-                    wine pip install -r backend/requirements.txt
-                    wine pyinstaller --onefile --windowed --name=api backend/src/api.py --distpath ./${PYTHON_DIST}
+                    mkdir -p ${WINEPREFIX}
+                    xvfb-run --server-args="-screen 0 1024x768x24" wine pip install -r backend/requirements.txt
+                    xvfb-run --server-args="-screen 0 1024x768x24" wine pyinstaller --onefile --windowed --name=api backend/src/api.py --distpath ./${PYTHON_DIST}
                 '''
 
                 echo 'Placing Python Binary into Electron Assets...'
@@ -54,7 +59,6 @@ pipeline {
             echo 'Windows package generated successfully!'
         }
         cleanup {
-            // Safe post-execution cleanup running on the host workspace block
             cleanWs()
         }
     }
