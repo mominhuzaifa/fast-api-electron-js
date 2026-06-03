@@ -1,32 +1,28 @@
 pipeline {
-    agent {
-        docker {
-            image 'electronuserland/builder:wine-chrome'
-            reuseNode true
-            args '--entrypoint=""'
-        }
-    }
+    agent none 
 
     environment {
         ARTIFACT_DIR  = 'dist'
         PYTHON_DIST   = 'backend/dist'
         WINEDEBUG     = '-all'
-        WINEPREFIX    = "${WORKSPACE}/.wine"
-        // FIX 1: Use the precise value 'win64' expected by Wine
-        WINEARCH      = 'win64'
-        // FIX 2: Disable interactive GUI popups for missing engines in headless build
-        WINEDLLOVERRIDES = "mscoree,mshtml="
     }
 
     stages {
         stage('Build Windows Binary (Python)') {
+            agent {
+                docker {
+                    // This container already has Windows Python, Pip, and PyInstaller pre-installed inside Wine
+                    image 'cdrx/pyinstaller-windows:python3'
+                    reuseNode true
+                }
+            }
             steps {
                 echo 'Compiling Python FastAPI Backend to Windows EXE...'
                 sh '''
-                    mkdir -p ${WINEPREFIX}
-                    xvfb-run --server-args="-screen 0 1024x768x24" wine64 python -m pip install --upgrade pip
-                    xvfb-run --server-args="-screen 0 1024x768x24" wine64 python -m pip install -r backend/requirements.txt
-                    xvfb-run --server-args="-screen 0 1024x768x24" wine64 pyinstaller --onefile --windowed --name=api backend/src/api.py --distpath ./${PYTHON_DIST}
+                    # Standard pip commands work instantly because the image handles the wine context natively
+                    pip install --upgrade pip
+                    pip install -r backend/requirements.txt
+                    pyinstaller --onefile --windowed --name=api backend/src/api.py --distpath ./${PYTHON_DIST}
                 '''
 
                 echo 'Placing Python Binary into Electron Assets...'
@@ -38,6 +34,13 @@ pipeline {
         }
 
         stage('Package App (Electron)') {
+            agent {
+                docker {
+                    // Standard node container is fine here since the python binary is already built
+                    image 'node:20-alpine'
+                    reuseNode true
+                }
+            }
             steps {
                 echo 'Building Final Windows Installer via Electron Builder...'
                 sh '''
@@ -48,6 +51,7 @@ pipeline {
         }
 
         stage('Archive Outputs') {
+            agent any
             steps {
                 echo 'Archiving build artifacts...'
                 archiveArtifacts artifacts: "${ARTIFACT_DIR}/*.exe", allowEmptyArchive: false
@@ -64,4 +68,3 @@ pipeline {
         }
     }
 }
-
