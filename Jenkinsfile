@@ -1,5 +1,5 @@
 pipeline {
-    agent none // Individual agents remain specified per stage
+    agent none 
 
     environment {
         ARTIFACT_DIR  = 'dist'
@@ -14,8 +14,6 @@ pipeline {
                 docker { 
                     image 'node:20-alpine' 
                     reuseNode true
-                    // FIX 1: Set npm cache directory to a local writable workspace path 
-                    // instead of let npm default to a locked root directory (/.npm)
                     args '-e npm_config_cache=/tmp/.npm'
                 }
             }
@@ -85,12 +83,11 @@ pipeline {
         }
     }
 
-    // FIX 2: Wrapped post conditions in an explicit node context 
-    // so Jenkins knows exactly which executor workspace to clean up.
+    // FIX: Explicit declarative agent definition inside the post block
     post {
         always {
-            node {
-                echo 'Cleaning up workspace execution contexts.'
+            node('built-in') {
+                echo 'Cleaning up workspace execution contexts...'
                 cleanWs()
             }
         }
