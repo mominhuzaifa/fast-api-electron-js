@@ -1,5 +1,8 @@
 pipeline {
-    agent none 
+    // Force the initial checkout and build context to instantiate on your AWS agent immediately
+    agent {
+        label 'linux-slave'
+    }
 
     environment {
         ARTIFACT_DIR  = 'dist'
@@ -11,15 +14,15 @@ pipeline {
         stage('Build Windows Binary (Python)') {
             agent {
                 docker {
-                    // This container already has Windows Python, Pip, and PyInstaller pre-installed inside Wine
                     image 'cdrx/pyinstaller-windows:python3'
+                    // Reuses the instance workspace already created by the parent agent block
                     reuseNode true
+                    args '-u root:root'
                 }
             }
             steps {
                 echo 'Compiling Python FastAPI Backend to Windows EXE...'
                 sh '''
-                    # Standard pip commands work instantly because the image handles the wine context natively
                     pip install --upgrade pip
                     pip install -r backend/requirements.txt
                     pyinstaller --onefile --windowed --name=api backend/src/api.py --distpath ./${PYTHON_DIST}
@@ -36,8 +39,7 @@ pipeline {
         stage('Package App (Electron)') {
             agent {
                 docker {
-                    // Standard node container is fine here since the python binary is already built
-                    image 'node:20-alpine'
+                    image 'electronuserland/builder:20'
                     reuseNode true
                 }
             }
@@ -51,10 +53,10 @@ pipeline {
         }
 
         stage('Archive Outputs') {
-            agent any
+            // Reuses the parent agent node cleanly to access the generated executable
             steps {
                 echo 'Archiving build artifacts...'
-                archiveArtifacts artifacts: "${ARTIFACT_DIR}/*.exe", allowEmptyArchive: false
+                archiveArtifacts artifacts: "${env.ARTIFACT_DIR}/*.exe", allowEmptyArchive: false
             }
         }
     }
@@ -64,6 +66,7 @@ pipeline {
             echo 'Windows package generated successfully!'
         }
         cleanup {
+            // Executed properly now that a persistent node context exists globally
             cleanWs()
         }
     }
