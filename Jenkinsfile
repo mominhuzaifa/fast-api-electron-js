@@ -13,9 +13,11 @@ pipeline {
     stages {
         stage('Build Windows Binary (Python)') {
             steps {
+                echo 'Creating required asset compilation directories on host...'
+                // Create the directory on the host first so the container can see it
+                sh 'mkdir -p backend/bin/win'
+
                 echo 'Compiling Python FastAPI Backend directly to the correct Electron Asset directory...'
-                
-                // Set the workdir inside the container to /src and force --distpath to point directly to backend/bin/win
                 sh '''
                     docker run --rm \
                         -v "${WORKSPACE}":/src \
