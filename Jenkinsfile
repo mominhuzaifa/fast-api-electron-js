@@ -1,7 +1,8 @@
 pipeline {
-    // Force the initial checkout and build context to instantiate on your AWS agent immediately
     agent {
-        label 'linux-slave'
+        node {
+            label 'linux-slave' // Dynamically provisions your AWS instance
+        }
     }
 
     environment {
@@ -12,20 +13,15 @@ pipeline {
 
     stages {
         stage('Build Windows Binary (Python)') {
-            agent {
-                docker {
-                    image 'cdrx/pyinstaller-windows:python3'
-                    // Reuses the instance workspace already created by the parent agent block
-                    reuseNode true
-                    args '-u root:root'
-                }
-            }
             steps {
-                echo 'Compiling Python FastAPI Backend to Windows EXE...'
+                echo 'Compiling Python FastAPI Backend to Windows EXE via Native Workspace Docker Call...'
+                
+                // Run the image explicitly as a runtime script command to keep streams intact
                 sh '''
-                    pip install --upgrade pip
-                    pip install -r backend/requirements.txt
-                    pyinstaller --onefile --windowed --name=api backend/src/api.py --distpath ./${PYTHON_DIST}
+                    docker run --rm \
+                        -v "${WORKSPACE}":/src \
+                        cdrx/pyinstaller-windows:python3 \
+                        sh -c "pip install --upgrade pip && pip install -r backend/requirements.txt && pyinstaller --onefile --windowed --name=api backend/src/api.py --distpath ./${PYTHON_DIST}"
                 '''
 
                 echo 'Placing Python Binary into Electron Assets...'
@@ -37,23 +33,21 @@ pipeline {
         }
 
         stage('Package App (Electron)') {
-            agent {
-                docker {
-                    image 'electronuserland/builder:20'
-                    reuseNode true
-                }
-            }
             steps {
-                echo 'Building Final Windows Installer via Electron Builder...'
+                echo 'Building Final Windows Installer via Electron Builder Container...'
+                
+                // Similarly executing via an explicit runtime shell pass
                 sh '''
-                    npm install
-                    npx electron-builder --win --x64
+                    docker run --rm \
+                        -v "${WORKSPACE}":/project \
+                        -w /project \
+                        electronuserland/builder:20 \
+                        sh -c "npm install && npx electron-builder --win --x64"
                 '''
             }
         }
 
         stage('Archive Outputs') {
-            // Reuses the parent agent node cleanly to access the generated executable
             steps {
                 echo 'Archiving build artifacts...'
                 archiveArtifacts artifacts: "${env.ARTIFACT_DIR}/*.exe", allowEmptyArchive: false
@@ -66,7 +60,6 @@ pipeline {
             echo 'Windows package generated successfully!'
         }
         cleanup {
-            // Executed properly now that a persistent node context exists globally
             cleanWs()
         }
     }
