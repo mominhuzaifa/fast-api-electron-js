@@ -6,7 +6,6 @@ pipeline {
     }
 
     environment {
-        ARTIFACT_DIR  = 'dist'
         WINEDEBUG     = '-all'
     }
 
@@ -29,37 +28,34 @@ pipeline {
                             
                             echo '=== Step 2: Packaging Electron App ===' && \
                             npm install && \
-                            npx electron-builder --win --x64
+                            npx electron-builder --win --x64 && \
+                            
+                            echo '=== Step 3: Checking Generated Folders Inside Container ===' && \
+                            ls -la
                         "
                 '''
 
-                echo '=== Step 3: Fixing Artifact Permissions on Host Agent ==='
-                // This forces the host machine to reclaim ownership of everything the container created
-                sh 'sudo chown -R $(id -u):$(id -g) "${WORKSPACE}/dist" || true'
+                echo '=== Step 4: Reclaiming Workspace Permissions on Host ==='
+                sh 'sudo chown -R $(id -u):$(id -g) "${WORKSPACE}" || true'
                 
-                echo 'Verifying workspace dist folder contents:'
-                sh 'ls -la dist/'
+                echo '=== Step 5: Locating Final Installer on Host Workspace ==='
+                sh 'find . -name "*.exe" -maxdepth 3'
             }
         }
 
         stage('Archive Outputs') {
             steps {
-                echo 'Archiving build artifacts...'
-                archiveArtifacts artifacts: "dist/*.exe", allowEmptyArchive: false
+                echo 'Archiving build artifacts natively...'
+                // This relaxed double-asterisk scan catches your .exe anywhere in the workspace directory tree safely
+                archiveArtifacts artifacts: "**/*.exe", allowEmptyArchive: false
             }
         }
     }
 
     post {
-        success {
-            echo 'Windows package generated successfully!'
-        }
         cleanup {
-            // Reclaim workspace permissions before cleanup to prevent ws-cleanup plugin from failing
             sh 'sudo chown -R $(id -u):$(id -g) "${WORKSPACE}" || true'
             cleanWs()
         }
     }
 }
-
-
