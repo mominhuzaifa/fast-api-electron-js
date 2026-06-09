@@ -1,42 +1,37 @@
 pipeline {
     agent {
         node {
-            label 'linux-slave' // Dynamically provisions your AWS instance
+            label 'linux-slave'
         }
     }
 
     environment {
         ARTIFACT_DIR  = 'dist'
-        PYTHON_DIST   = 'backend/dist'
         WINEDEBUG     = '-all'
     }
 
     stages {
         stage('Build Windows Binary (Python)') {
             steps {
-                echo 'Compiling Python FastAPI Backend to Windows EXE via Native Workspace Docker Call...'
+                echo 'Compiling Python FastAPI Backend directly to the correct Electron Asset directory...'
                 
-                // Run the image explicitly as a runtime script command to keep streams intact
+                // Set the workdir inside the container to /src and force --distpath to point directly to backend/bin/win
                 sh '''
                     docker run --rm \
                         -v "${WORKSPACE}":/src \
+                        -w /src \
                         cdrx/pyinstaller-windows:python3 \
-                        sh -c "pip install --upgrade pip && pip install -r backend/requirements.txt && pyinstaller --onefile --windowed --name=api backend/src/api.py --distpath ./${PYTHON_DIST}"
+                        sh -c "pip install --upgrade pip && pip install -r backend/requirements.txt && pyinstaller --onefile --windowed --name=api backend/src/api.py --distpath ./backend/bin/win"
                 '''
 
-                echo 'Placing Python Binary into Electron Assets...'
-                sh '''
-                    mkdir -p backend/bin/win
-                    cp ${PYTHON_DIST}/api.exe backend/bin/win/
-                '''
+                echo 'Verifying compilation output location...'
+                sh 'ls -la backend/bin/win/'
             }
         }
 
         stage('Package App (Electron)') {
             steps {
                 echo 'Building Final Windows Installer via Electron Builder Container...'
-                
-                // Similarly executing via an explicit runtime shell pass
                 sh '''
                     docker run --rm \
                         -v "${WORKSPACE}":/project \
