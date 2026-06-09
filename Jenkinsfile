@@ -1,7 +1,7 @@
 pipeline {
     agent {
         node {
-            label 'linux-slave' // Spawns your AWS EC2 agent
+            label 'linux-slave'
         }
     }
 
@@ -16,17 +16,15 @@ pipeline {
                 echo 'Creating required asset compilation directories on host...'
                 sh 'mkdir -p backend/bin/win'
 
-                echo 'Running Full Windows Build Pipeline inside an Electron Wine Environment...'
-                
-                // Wrap the internal commands securely inside quotes so everything executes inside the container context
+                echo 'Running Combined Python & Electron Pipeline inside PyInstaller Wine Container...'
                 sh '''
                     docker run --rm \
-                        -v "${WORKSPACE}":/project \
-                        -w /project \
-                        electronuserland/builder:wine \
+                        -v "${WORKSPACE}":/src \
+                        -w /src \
+                        cdrx/pyinstaller-windows:python3 \
                         sh -c "
                             echo '=== Step 1: Compiling Python FastAPI Backend ===' && \
-                            pip3 install -r backend/requirements.txt && \
+                            pip install -r backend/requirements.txt && \
                             pyinstaller --onefile --windowed --name=api backend/src/api.py --distpath ./backend/bin/win && \
                             
                             echo '=== Step 2: Packaging Electron Front-end ===' && \
