@@ -1,7 +1,7 @@
 pipeline {
     agent {
         node {
-            label 'linux-slave'
+            label 'linux-slave' // Spawns your AWS EC2 agent
         }
     }
 
@@ -11,35 +11,28 @@ pipeline {
     }
 
     stages {
-        stage('Build Windows Binary (Python)') {
+        stage('Build & Package App') {
             steps {
                 echo 'Creating required asset compilation directories on host...'
-                // Create the directory on the host first so the container can see it
                 sh 'mkdir -p backend/bin/win'
 
-                echo 'Compiling Python FastAPI Backend directly to the correct Electron Asset directory...'
-                sh '''
-                    docker run --rm \
-                        -v "${WORKSPACE}":/src \
-                        -w /src \
-                        cdrx/pyinstaller-windows:python3 \
-                        sh -c "pip install --upgrade pip && pip install -r backend/requirements.txt && pyinstaller --onefile --windowed --name=api backend/src/api.py --distpath ./backend/bin/win"
-                '''
-
-                echo 'Verifying compilation output location...'
-                sh 'ls -la backend/bin/win/'
-            }
-        }
-
-        stage('Package App (Electron)') {
-            steps {
-                echo 'Building Final Windows Installer via Electron Builder Container...'
+                echo 'Running Full Windows Build Pipeline inside an Electron Wine Environment...'
+                
+                // Wrap the internal commands securely inside quotes so everything executes inside the container context
                 sh '''
                     docker run --rm \
                         -v "${WORKSPACE}":/project \
                         -w /project \
-                        electronuserland/builder:20 \
-                        sh -c "npm install && npx electron-builder --win --x64"
+                        electronuserland/builder:wine \
+                        sh -c "
+                            echo '=== Step 1: Compiling Python FastAPI Backend ===' && \
+                            pip3 install -r backend/requirements.txt && \
+                            pyinstaller --onefile --windowed --name=api backend/src/api.py --distpath ./backend/bin/win && \
+                            
+                            echo '=== Step 2: Packaging Electron Front-end ===' && \
+                            npm install && \
+                            npx electron-builder --win --x64
+                        "
                 '''
             }
         }
