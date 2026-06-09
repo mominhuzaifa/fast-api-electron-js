@@ -29,7 +29,10 @@ pipeline {
                             
                             echo '=== Step 2: Packaging Electron Front-end ===' && \
                             npm install && \
-                            npx electron-builder --win --x64
+                            npx electron-builder --win --x64 && \
+                            
+                            echo '=== Step 3: Fixing Artifact Permissions ===' && \
+                            chown -R 1000:1000 dist/
                         "
                 '''
             }
@@ -38,7 +41,8 @@ pipeline {
         stage('Archive Outputs') {
             steps {
                 echo 'Archiving build artifacts...'
-                archiveArtifacts artifacts: "${env.ARTIFACT_DIR}/*.exe", allowEmptyArchive: false
+                // Using a relaxed pattern to catch whatever installer format electron-builder generated
+                archiveArtifacts artifacts: "dist/*", allowEmptyArchive: false
             }
         }
     }
@@ -52,3 +56,4 @@ pipeline {
         }
     }
 }
+
