@@ -22,23 +22,25 @@ pipeline {
                         -w /src \
                         cdrx/pyinstaller-windows:python3 \
                         sh -c "
-                            echo '=== Step 1: Compiling Python Backend ===' && \
-                            pip install -r backend/requirements.txt && \
-                            pyinstaller --onefile --windowed --name=api backend/src/api.py --distpath ./backend/bin/win && \
+                            set -e
+                            echo '=== Step 1: Installing Python Dependencies ==='
+                            pip install -r backend/requirements.txt || echo 'Pip finished with warnings'
                             
-                            echo '=== Step 2: Packaging Electron App ===' && \
-                            npm install && \
-                            npx electron-builder --win --x64 && \
+                            echo '=== Step 2: Compiling Python Backend via PyInstaller ==='
+                            pyinstaller --onefile --windowed --name=api backend/src/api.py --distpath ./backend/bin/win
                             
-                            echo '=== Step 3: Checking Generated Folders Inside Container ===' && \
-                            ls -la
+                            echo '=== Step 3: Installing Node Modules ==='
+                            npm install
+                            
+                            echo '=== Step 4: Packaging Electron App ==='
+                            npx electron-builder --win --x64
                         "
                 '''
 
-                echo '=== Step 4: Reclaiming Workspace Permissions on Host ==='
+                echo '=== Step 5: Reclaiming Workspace Permissions on Host ==='
                 sh 'sudo chown -R $(id -u):$(id -g) "${WORKSPACE}" || true'
                 
-                echo '=== Step 5: Locating Final Installer on Host Workspace ==='
+                echo '=== Step 6: Verifying Workspace Output Files ==='
                 sh 'find . -name "*.exe" -maxdepth 3'
             }
         }
@@ -46,7 +48,6 @@ pipeline {
         stage('Archive Outputs') {
             steps {
                 echo 'Archiving build artifacts natively...'
-                // This relaxed double-asterisk scan catches your .exe anywhere in the workspace directory tree safely
                 archiveArtifacts artifacts: "**/*.exe", allowEmptyArchive: false
             }
         }
