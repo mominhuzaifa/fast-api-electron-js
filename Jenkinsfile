@@ -1,64 +1,55 @@
 pipeline {
     agent {
         node {
-            label 'linux-slave'
+            label 'linux-slave' // Dynamically provisions your AWS instance
         }
     }
 
     environment {
+        ARTIFACT_DIR  = 'dist'
         WINEDEBUG     = '-all'
     }
 
     stages {
-        stage('Build & Package App') {
+        stage('Build Python Backend') {
             steps {
-                echo 'Creating workspace directory trees...'
-                sh 'mkdir -p backend/bin/win'
-
-                echo 'Writing clean deployment build script...'
-                // This writes a clean build.sh script directly on the agent host workspace
-                sh '''
-                    cat << 'EOF' > inner-build.sh
-#!/bin/bash
-set -e
-
-echo "=== Step 1: Installing Python Dependencies ==="
-pip install -r backend/requirements.txt
-
-echo "=== Step 2: Compiling Python Backend via PyInstaller ==="
-pyinstaller --onefile --windowed --name=api backend/src/api.py --distpath ./backend/bin/win
-
-echo "=== Step 3: Installing Node Modules ==="
-npm install
-
-echo "=== Step 4: Packaging Electron App ==="
-npx electron-builder --win --x64
-EOF
-                    chmod +x inner-build.sh
-                '''
-
-                echo 'Running Build Script inside PyInstaller Wine Container...'
-                // Run the script cleanly without shell quoting or heredoc bugs
+                echo '=== Step 1: Compiling FastAPI Backend via Isolated Container Pass ==='
+                // This runs PyInstaller on the host workspace mount explicitly
                 sh '''
                     docker run --rm \
                         -v "${WORKSPACE}":/src \
                         -w /src \
                         cdrx/pyinstaller-windows:python3 \
-                        ./inner-build.sh
+                        sh -c "pip install -r backend/requirements.txt && pyinstaller --onefile --windowed --name=api backend/src/api.py --distpath ./backend/bin/win"
                 '''
+            }
+        }
 
-                echo '=== Step 5: Reclaiming Workspace Permissions on Host ==='
+        stage('Package Electron App') {
+            steps {
+                echo '=== Step 2: Packaging Electron Installer App via Wine ==='
+                // Reclaiming permissions on the generated files so the next container can read them
                 sh 'sudo chown -R $(id -u):$(id -g) "${WORKSPACE}" || true'
                 
-                echo '=== Step 6: Verifying Workspace Output Files ==='
-                sh 'find . -name "*.exe" -maxdepth 3'
+                sh '''
+                    docker run --rm \
+                        -v "${WORKSPACE}":/project \
+                        -w /project \
+                        electronuserland/builder:wine \
+                        sh -c "npm install && npx electron-builder --win --x64"
+                '''
             }
         }
 
         stage('Archive Outputs') {
             steps {
-                echo 'Archiving build artifacts natively...'
-                archiveArtifacts artifacts: "**/*.exe", allowEmptyArchive: false
+                echo '=== Step 3: Reclaiming Permissions & Archiving Final Package ==='
+                sh 'sudo chown -R $(id -u):$(id -g) "${WORKSPACE}" || true'
+                
+                // Verification output listing
+                sh 'ls -la dist/'
+                
+                archiveArtifacts artifacts: "dist/*.exe", allowEmptyArchive: false
             }
         }
     }
